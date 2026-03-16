@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy } from 'react';
 import mermaid from 'mermaid';
 import { AlertTriangle, Maximize2 } from '@/lib/lucide-icons';
-import { ProcessFlowModal } from './ProcessFlowModal';
 import type { ProcessData } from '../lib/mermaid-generator';
+
+const ProcessFlowModal = lazy(() =>
+  import('./ProcessFlowModal').then((m) => ({ default: m.ProcessFlowModal })),
+);
 
 // Initialize mermaid with cyan theme matching ProcessFlowModal
 mermaid.initialize({
