@@ -232,7 +232,7 @@ const workerApi = {
     await lbug.loadGraphToLbug(graph, fileMap);
 
     // Build BM25 index for text search
-    buildBM25Index(graph);
+    buildBM25Index(fileMap);
 
     if (import.meta.env.DEV) {
       const stats = await lbug.getLbugStats();
