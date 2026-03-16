@@ -30,7 +30,7 @@ const AppContent = () => {
     setSettingsPanelOpen,
     refreshLLMSettings,
     initializeAgent,
-    startEmbeddings,
+    startEmbeddingsWithFallback,
     embeddingStatus,
     codeReferences,
     selectedNode,
@@ -68,13 +68,7 @@ const AppContent = () => {
 
       // Auto-start embeddings pipeline in background
       // Uses WebGPU if available, falls back to WASM
-      startEmbeddings().catch((err) => {
-        if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
-          startEmbeddings('wasm').catch(console.warn);
-        } else {
-          console.warn('Embeddings auto-start failed:', err);
-        }
-      });
+      startEmbeddingsWithFallback();
     } catch (error) {
       console.error('Pipeline error:', error);
       setProgress({
@@ -88,7 +82,7 @@ const AppContent = () => {
         setProgress(null);
       }, 3000);
     }
-  }, [setViewMode, setGraph, setFileContents, setProgress, setProjectName, runPipeline, startEmbeddings, initializeAgent]);
+  }, [setViewMode, setGraph, setFileContents, setProgress, setProjectName, runPipeline, startEmbeddingsWithFallback, initializeAgent]);
 
   const handleGitClone = useCallback(async (files: FileEntry[]) => {
     const firstPath = files[0]?.path || 'repository';
@@ -111,13 +105,7 @@ const AppContent = () => {
         initializeAgent(projectName);
       }
 
-      startEmbeddings().catch((err) => {
-        if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
-          startEmbeddings('wasm').catch(console.warn);
-        } else {
-          console.warn('Embeddings auto-start failed:', err);
-        }
-      });
+      startEmbeddingsWithFallback();
     } catch (error) {
       console.error('Pipeline error:', error);
       setProgress({
@@ -131,9 +119,9 @@ const AppContent = () => {
         setProgress(null);
       }, 3000);
     }
-  }, [setViewMode, setGraph, setFileContents, setProgress, setProjectName, runPipelineFromFiles, startEmbeddings, initializeAgent]);
+  }, [setViewMode, setGraph, setFileContents, setProgress, setProjectName, runPipelineFromFiles, startEmbeddingsWithFallback, initializeAgent]);
 
-  const handleServerConnect = useCallback(async (result: ConnectToServerResult) => {
+  const handleServerConnect = useCallback((result: ConnectToServerResult) => {
     // Extract project name from repoPath
     const repoPath = result.repoInfo.repoPath;
     const projectName = repoPath.split('/').pop() || 'server-project';
@@ -173,14 +161,8 @@ const AppContent = () => {
       });
 
     // Auto-start embeddings
-    startEmbeddings().catch((err) => {
-      if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
-        startEmbeddings('wasm').catch(console.warn);
-      } else {
-        console.warn('Embeddings auto-start failed:', err);
-      }
-    });
-  }, [setViewMode, setGraph, setFileContents, setProjectName, loadServerGraph, initializeAgent, startEmbeddings]);
+    startEmbeddingsWithFallback();
+  }, [setViewMode, setGraph, setFileContents, setProjectName, loadServerGraph, initializeAgent, startEmbeddingsWithFallback]);
 
   // Auto-connect when ?server query param is present (bookmarkable shortcut)
   const autoConnectRan = useRef(false);
