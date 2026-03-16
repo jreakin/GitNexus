@@ -307,12 +307,14 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle>((_, ref) => {
       <div className="absolute top-4 right-4 z-20">
         <button
           onClick={() => {
-            // Always clear all highlights (process, AI citations, tool, blast radius, selection)
-            setHighlightedNodeIds(new Set());
-            clearAIToolHighlights();
-            clearBlastRadius();
-            setSelectedNode(null);
-            setSigmaSelectedNode(null);
+            if (isAIHighlightsEnabled) {
+              // Turning off — clear all highlights and selection
+              setHighlightedNodeIds(new Set());
+              clearAIToolHighlights();
+              clearBlastRadius();
+              setSelectedNode(null);
+              setSigmaSelectedNode(null);
+            }
             toggleAIHighlights();
           }}
           className={

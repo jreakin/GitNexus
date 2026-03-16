@@ -133,6 +133,7 @@ interface AppState {
 
   // Embedding methods
   startEmbeddings: (forceDevice?: 'webgpu' | 'wasm') => Promise<void>;
+  startEmbeddingsWithFallback: () => void;
   semanticSearch: (query: string, k?: number) => Promise<SemanticSearchResult[]>;
   semanticSearchWithContext: (query: string, k?: number, hops?: number) => Promise<any[]>;
   isEmbeddingReady: boolean;
@@ -537,6 +538,16 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       throw error;
     }
   }, []);
+
+  const startEmbeddingsWithFallback = useCallback(() => {
+    startEmbeddings().catch((err) => {
+      if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
+        startEmbeddings('wasm').catch(console.warn);
+      } else {
+        console.warn('Embeddings auto-start failed:', err);
+      }
+    });
+  }, [startEmbeddings]);
 
   const semanticSearch = useCallback(async (
     query: string,
@@ -1037,13 +1048,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
         })
         .catch((err) => console.warn('Failed to load graph into LadybugDB:', err));
 
-      startEmbeddings().catch((err) => {
-        if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
-          startEmbeddings('wasm').catch(console.warn);
-        } else {
-          console.warn('Embeddings auto-start failed:', err);
-        }
-      });
+      startEmbeddingsWithFallback();
     } catch (err) {
       console.error('Repo switch failed:', err);
       setProgress({
@@ -1053,7 +1058,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       });
       setTimeout(() => { setViewMode('exploring'); setProgress(null); }, 3000);
     }
-  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, loadServerGraph, initializeAgent, startEmbeddings, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
+  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, loadServerGraph, initializeAgent, startEmbeddingsWithFallback, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
 
   const removeCodeReference = useCallback((id: string) => {
     setCodeReferences(prev => {
@@ -1163,6 +1168,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     embeddingStatus,
     embeddingProgress,
     startEmbeddings,
+    startEmbeddingsWithFallback,
     semanticSearch,
     semanticSearchWithContext,
     isEmbeddingReady: embeddingStatus === 'ready',

@@ -225,8 +225,13 @@ const workerApi = {
     const fileMap = new Map<string, string>();
     for (const [path, content] of Object.entries(fileContents)) {
       fileMap.set(path, content);
-      storedFileContents.set(path, content);
     }
+
+    // Replace (not accumulate) stored file contents for grep/read tools
+    storedFileContents = fileMap;
+
+    // Track graph result for downstream APIs (enrichCommunities, etc.)
+    currentGraphResult = { graph, fileContents: fileMap } as PipelineResult;
 
     const lbug = await getLbugAdapter();
     await lbug.loadGraphToLbug(graph, fileMap);
