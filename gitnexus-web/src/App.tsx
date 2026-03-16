@@ -121,7 +121,7 @@ const AppContent = () => {
     }
   }, [setViewMode, setGraph, setFileContents, setProgress, setProjectName, runPipelineFromFiles, startEmbeddingsWithFallback, initializeAgent]);
 
-  const handleServerConnect = useCallback((result: ConnectToServerResult) => {
+  const handleServerConnect = useCallback((result: ConnectToServerResult): Promise<void> => {
     // Extract project name from repoPath
     const repoPath = result.repoInfo.repoPath;
     const projectName = repoPath.split('/').pop() || 'server-project';
@@ -149,10 +149,10 @@ const AppContent = () => {
 
     // Load graph into LadybugDB (in-browser WASM database) for Nexus AI queries,
     // then initialize agent once the database is ready
-    loadServerGraph(result.nodes, result.relationships, result.fileContents)
+    const loadGraphPromise = loadServerGraph(result.nodes, result.relationships, result.fileContents)
       .then(() => {
         if (getActiveProviderConfig()) {
-          initializeAgent(projectName);
+          return initializeAgent(projectName);
         }
       })
       .catch((err) => {
@@ -162,6 +162,7 @@ const AppContent = () => {
 
     // Auto-start embeddings
     startEmbeddingsWithFallback();
+    return loadGraphPromise;
   }, [setViewMode, setGraph, setFileContents, setProjectName, loadServerGraph, initializeAgent, startEmbeddingsWithFallback]);
 
   // Auto-connect when ?server query param is present (bookmarkable shortcut)
@@ -193,17 +194,13 @@ const AppContent = () => {
       } else if (phase === 'extracting') {
         setProgress({ phase: 'extracting', percent: 97, message: 'Processing...', detail: 'Extracting file contents' });
       }
-    }).then(async (result) => {
-      await handleServerConnect(result);
-
-      // Store server URL and fetch available repos for the repo switcher
+    }).then((result) => {
+      // Run connect and repo list in parallel (avoid waterfall)
+      handleServerConnect(result);
       setServerBaseUrl(baseUrl);
-      try {
-        const repos = await fetchRepos(baseUrl);
-        setAvailableRepos(repos);
-      } catch (e) {
-        console.warn('Failed to fetch repo list:', e);
-      }
+      fetchRepos(baseUrl)
+        .then((repos) => setAvailableRepos(repos))
+        .catch((e) => console.warn('Failed to fetch repo list:', e));
     }).catch((err) => {
       console.error('Auto-connect failed:', err);
       setProgress({
@@ -236,17 +233,14 @@ const AppContent = () => {
       <DropZone
         onFileSelect={handleFileSelect}
         onGitClone={handleGitClone}
-        onServerConnect={async (result, serverUrl) => {
+        onServerConnect={(result, serverUrl) => {
           handleServerConnect(result);
           if (serverUrl) {
             const baseUrl = normalizeServerUrl(serverUrl);
             setServerBaseUrl(baseUrl);
-            try {
-              const repos = await fetchRepos(baseUrl);
-              setAvailableRepos(repos);
-            } catch (e) {
-              console.warn('Failed to fetch repo list:', e);
-            }
+            fetchRepos(baseUrl)
+              .then((repos) => setAvailableRepos(repos))
+              .catch((e) => console.warn('Failed to fetch repo list:', e));
           }
         }}
       />

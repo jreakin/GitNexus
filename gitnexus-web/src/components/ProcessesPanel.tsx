@@ -5,11 +5,15 @@
  * Clicking a process opens the ProcessFlowModal with a flowchart.
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { GitBranch, Search, Eye, Zap, Home, ChevronDown, ChevronRight, Sparkles, Lightbulb, Layers } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
+import { GitBranch, Search, Eye, Zap, Home, ChevronDown, ChevronRight, Sparkles, Lightbulb, Layers } from '@/lib/lucide-icons';
 import { useAppState } from '../hooks/useAppState';
-import { ProcessFlowModal } from './ProcessFlowModal';
 import type { ProcessData, ProcessStep } from '../lib/mermaid-generator';
+
+// Lazy-load modal and mermaid only when user opens a process flowchart (bundle-size / TTI)
+const ProcessFlowModal = lazy(() =>
+  import('./ProcessFlowModal').then((m) => ({ default: m.ProcessFlowModal }))
+);
 
 export const ProcessesPanel = () => {
     const { graph, runQuery, setHighlightedNodeIds, highlightedNodeIds } = useAppState();
@@ -427,13 +431,17 @@ export const ProcessesPanel = () => {
                 )}
             </div>
 
-            {/* Modal */}
-            <ProcessFlowModal
-                process={selectedProcess}
-                onClose={() => setSelectedProcess(null)}
-                onFocusInGraph={handleFocusInGraph}
-                isFullScreen={selectedProcess?.id === 'combined-all'}
-            />
+            {/* Modal — lazy-loaded so mermaid bundle loads only when user opens a flowchart */}
+            {selectedProcess != null && (
+                <Suspense fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-void/90"><span className="text-text-muted">Loading diagram…</span></div>}>
+                    <ProcessFlowModal
+                        process={selectedProcess}
+                        onClose={() => setSelectedProcess(null)}
+                        onFocusInGraph={handleFocusInGraph}
+                        isFullScreen={selectedProcess?.id === 'combined-all'}
+                    />
+                </Suspense>
+            )}
         </div>
     );
 };

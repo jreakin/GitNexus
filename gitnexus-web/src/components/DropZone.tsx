@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, DragEvent } from 'react';
-import { Upload, FileArchive, Github, Loader2, ArrowRight, Key, Eye, EyeOff, Globe, X } from 'lucide-react';
+import { Upload, FileArchive, Github, Loader2, ArrowRight, Key, Eye, EyeOff, Globe, X } from '@/lib/lucide-icons';
 import { cloneRepository, parseGitHubUrl } from '../services/git-clone';
 import { connectToServer, type ConnectToServerResult } from '../services/server-connection';
 import { FileEntry } from '../services/zip';

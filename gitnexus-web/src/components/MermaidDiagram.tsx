@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
-import { AlertTriangle, Maximize2 } from 'lucide-react';
+import { AlertTriangle, Maximize2 } from '@/lib/lucide-icons';
 import { ProcessFlowModal } from './ProcessFlowModal';
 import type { ProcessData } from '../lib/mermaid-generator';
 
