@@ -1042,11 +1042,14 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       setViewMode('exploring');
 
       // Load graph into LadybugDB for Nexus AI queries, then init agent
-      loadServerGraph(result.nodes, result.relationships, result.fileContents)
-        .then(() => {
-          if (getActiveProviderConfig()) initializeAgent(pName);
-        })
-        .catch((err) => console.warn('Failed to load graph into LadybugDB:', err));
+      try {
+        await loadServerGraph(result.nodes, result.relationships, result.fileContents);
+        if (getActiveProviderConfig()) {
+          await initializeAgent(pName);
+        }
+      } catch (err) {
+        console.warn('Failed to load graph into LadybugDB:', err);
+      }
 
       startEmbeddingsWithFallback();
     } catch (err) {

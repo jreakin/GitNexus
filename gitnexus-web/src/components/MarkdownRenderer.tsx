@@ -5,7 +5,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { MermaidDiagram } from './MermaidDiagram';
 import { ToolCallCard } from './ToolCallCard';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check } from '@/lib/lucide-icons';
 
 // Custom syntax theme
 const customTheme = {

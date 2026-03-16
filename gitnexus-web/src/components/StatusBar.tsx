@@ -1,4 +1,4 @@
-import { Heart } from 'lucide-react';
+import { Heart } from '@/lib/lucide-icons';
 import { useAppState } from '../hooks/useAppState';
 
 export const StatusBar = () => {
