@@ -1,7 +1,5 @@
 import * as Comlink from 'comlink';
 import { runIngestionPipeline, runPipelineFromFiles } from '../core/ingestion/pipeline';
-import { createKnowledgeGraph } from '../core/graph/graph';
-import type { GraphNode, GraphRelationship } from '../core/graph/types';
 import { PipelineProgress, SerializablePipelineResult, serializePipelineResult } from '../types/pipeline';
 import { FileEntry } from '../services/zip';
 import {
@@ -14,12 +12,13 @@ import { isEmbedderReady, disposeEmbedder } from '../core/embeddings/embedder';
 import type { EmbeddingProgress, SemanticSearchResult } from '../core/embeddings/types';
 import type { ProviderConfig, AgentStreamChunk } from '../core/llm/types';
 import { createGraphRAGAgent, streamAgentResponse, type AgentMessage, createChatModel } from '../core/llm/agent';
+import { createKnowledgeGraph } from '../core/graph/graph';
+import type { GraphNode, GraphRelationship } from '../core/graph/types';
 import { SystemMessage } from '@langchain/core/messages';
 import { enrichClustersBatch, ClusterMemberInfo, ClusterEnrichment } from '../core/ingestion/cluster-enricher';
 import { CommunityNode } from '../core/ingestion/community-processor';
 import { PipelineResult } from '../types/pipeline';
 import { buildCodebaseContext, type CodebaseContext } from '../core/llm/context-builder';
-import { hydrateSerializedServerGraph } from './server-graph-hydration';
 import { 
   buildBM25Index, 
   searchBM25, 
@@ -56,29 +55,6 @@ let enrichmentCancelled = false;
 
 // Chat cancellation flag
 let chatCancelled = false;
-
-const loadResultIntoWorkerState = async (result: PipelineResult): Promise<void> => {
-  currentGraphResult = result;
-  storedFileContents = result.fileContents;
-
-  const bm25DocCount = buildBM25Index(storedFileContents);
-  if (import.meta.env.DEV) {
-    console.log(`🔍 BM25 index built: ${bm25DocCount} documents`);
-  }
-
-  try {
-    const lbug = await getLbugAdapter();
-    await lbug.loadGraphToLbug(result.graph, result.fileContents);
-
-    if (import.meta.env.DEV) {
-      const stats = await lbug.getLbugStats();
-      console.log('LadybugDB loaded:', stats);
-      console.log('📁 Stored', storedFileContents.size, 'files for grep/read tools');
-    }
-  } catch {
-    // LadybugDB is optional - silently continue without it
-  }
-};
 
 // ============================================================
 // HTTP helpers for backend mode
@@ -187,7 +163,18 @@ const workerApi = {
     console.log('🔧 runPipeline called with clusteringConfig:', !!clusteringConfig);
     // Run the actual pipeline
     const result = await runIngestionPipeline(file, onProgress);
-    // Load graph into local indexes for query/AI features.
+    currentGraphResult = result;
+    
+    // Store file contents for grep/read tools (full content, not truncated)
+    storedFileContents = result.fileContents;
+    
+    // Build BM25 index for keyword search (instant, ~100ms)
+    const bm25DocCount = buildBM25Index(storedFileContents);
+    if (import.meta.env.DEV) {
+      console.log(`🔍 BM25 index built: ${bm25DocCount} documents`);
+    }
+    
+    // Load graph into LadybugDB for querying (optional - gracefully degrades)
     try {
       onProgress({
         phase: 'complete',
@@ -199,7 +186,15 @@ const workerApi = {
           nodesCreated: result.graph.nodeCount,
         },
       });
-      await loadResultIntoWorkerState(result);
+
+      const lbug = await getLbugAdapter();
+      await lbug.loadGraphToLbug(result.graph, result.fileContents);
+
+      if (import.meta.env.DEV) {
+        const stats = await lbug.getLbugStats();
+        console.log('LadybugDB loaded:', stats);
+        console.log('📁 Stored', storedFileContents.size, 'files for grep/read tools');
+      }
     } catch {
       // LadybugDB is optional - silently continue without it
     }
@@ -215,46 +210,34 @@ const workerApi = {
   },
 
   /**
-   * Hydrate the worker-side database and indexes from server-loaded data.
-   * This is the missing step when using server/bridge mode — the main thread
-   * builds the React graph, but the worker's LadybugDB + BM25 stay empty.
+   * Load a pre-built graph from the server into LadybugDB.
+   * Called when connecting via server (bypasses the WASM ingestion pipeline).
    */
-  async hydrateFromServerData(
+  async loadServerGraph(
     nodes: GraphNode[],
     relationships: GraphRelationship[],
     fileContents: Record<string, string>
   ): Promise<void> {
-    // 1. Build a KnowledgeGraph the same way the pipeline does
     const graph = createKnowledgeGraph();
     for (const node of nodes) graph.addNode(node);
     for (const rel of relationships) graph.addRelationship(rel);
 
-    // 2. Store file contents for grep/read tools
-    storedFileContents = new Map(Object.entries(fileContents));
-
-    // 3. Build BM25 keyword index
-    const bm25DocCount = buildBM25Index(storedFileContents);
-    if (import.meta.env.DEV) {
-      console.log(`🔍 BM25 index built (server mode): ${bm25DocCount} documents`);
+    const fileMap = new Map<string, string>();
+    for (const [path, content] of Object.entries(fileContents)) {
+      fileMap.set(path, content);
+      storedFileContents.set(path, content);
     }
 
-    // 4. Set currentGraphResult so the agent context builder works
-    currentGraphResult = { graph, fileContents: storedFileContents };
+    const lbug = await getLbugAdapter();
+    await lbug.loadGraphToLbug(graph, fileMap);
 
-    // 5. Load graph into LadybugDB for Cypher queries (optional — gracefully degrades)
-    try {
-      const lbug = await getLbugAdapter();
-      await lbug.loadGraphToLbug(graph, storedFileContents);
+    // Build BM25 index for text search
+    buildBM25Index(graph);
 
-      if (import.meta.env.DEV) {
-        const stats = await lbug.getLbugStats();
-        console.log('✅ LadybugDB hydrated (server mode):', stats);
-      }
-    } catch (err) {
-      // LadybugDB is optional — silently continue without it
-      if (import.meta.env.DEV) {
-        console.warn('⚠️ LadybugDB hydration failed (non-fatal):', err);
-      }
+    if (import.meta.env.DEV) {
+      const stats = await lbug.getLbugStats();
+      console.log('LadybugDB loaded from server:', stats);
+      console.log('📁 Stored', storedFileContents.size, 'files for grep/read tools');
     }
   },
 
@@ -316,7 +299,18 @@ const workerApi = {
 
     // Run the pipeline
     const result = await runPipelineFromFiles(files, onProgress);
-    // Load graph into local indexes for query/AI features.
+    currentGraphResult = result;
+    
+    // Store file contents for grep/read tools (full content, not truncated)
+    storedFileContents = result.fileContents;
+    
+    // Build BM25 index for keyword search (instant, ~100ms)
+    const bm25DocCount = buildBM25Index(storedFileContents);
+    if (import.meta.env.DEV) {
+      console.log(`🔍 BM25 index built: ${bm25DocCount} documents`);
+    }
+    
+    // Load graph into LadybugDB for querying (optional - gracefully degrades)
     try {
       onProgress({
         phase: 'complete',
@@ -328,7 +322,15 @@ const workerApi = {
           nodesCreated: result.graph.nodeCount,
         },
       });
-      await loadResultIntoWorkerState(result);
+
+      const lbug = await getLbugAdapter();
+      await lbug.loadGraphToLbug(result.graph, result.fileContents);
+
+      if (import.meta.env.DEV) {
+        const stats = await lbug.getLbugStats();
+        console.log('LadybugDB loaded:', stats);
+        console.log('📁 Stored', storedFileContents.size, 'files for grep/read tools');
+      }
     } catch {
       // LadybugDB is optional - silently continue without it
     }
@@ -341,10 +343,6 @@ const workerApi = {
     
     // Convert to serializable format for transfer back to main thread
     return serializePipelineResult(result);
-  },
-
-  async hydrateServerGraph(serialized: SerializablePipelineResult): Promise<void> {
-    await hydrateSerializedServerGraph(serialized, loadResultIntoWorkerState);
   },
 
   // ============================================================

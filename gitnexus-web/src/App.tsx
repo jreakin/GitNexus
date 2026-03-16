@@ -13,7 +13,6 @@ import { FileEntry } from './services/zip';
 import { getActiveProviderConfig } from './core/llm/settings-service';
 import { createKnowledgeGraph } from './core/graph/graph';
 import { connectToServer, fetchRepos, normalizeServerUrl, type ConnectToServerResult } from './services/server-connection';
-import { HelpPanel } from './components/HelpPanel';
 
 const AppContent = () => {
   const {
@@ -27,11 +26,8 @@ const AppContent = () => {
     isRightPanelOpen,
     runPipeline,
     runPipelineFromFiles,
-    hydrateServerGraph,
     isSettingsPanelOpen,
     setSettingsPanelOpen,
-    isHelpDialogBoxOpen,
-    setHelpDialogBoxOpen,
     refreshLLMSettings,
     initializeAgent,
     startEmbeddings,
@@ -44,8 +40,7 @@ const AppContent = () => {
     availableRepos,
     setAvailableRepos,
     switchRepo,
-    hydrateWorkerFromServer,
-    graph
+    loadServerGraph,
   } = useAppState();
 
   const graphCanvasRef = useRef<GraphCanvasHandle>(null);
@@ -144,7 +139,7 @@ const AppContent = () => {
     const projectName = repoPath.split('/').pop() || 'server-project';
     setProjectName(projectName);
 
-    // Build KnowledgeGraph from server data (bypasses WASM pipeline entirely)
+    // Build KnowledgeGraph from server data for visualization
     const graph = createKnowledgeGraph();
     for (const node of result.nodes) {
       graph.addNode(node);
@@ -161,38 +156,31 @@ const AppContent = () => {
     }
     setFileContents(fileMap);
 
-    try {
-      await hydrateServerGraph(result);
+    // Transition directly to exploring view
+    setViewMode('exploring');
 
-      // Transition directly to exploring view
-      setViewMode('exploring');
-    } finally {
-      setProgress(null);
-    }
-
-    // Hydrate the worker-side DB (LadybugDB + BM25) so Query/Processes/embeddings work
-    hydrateWorkerFromServer(result.nodes, result.relationships, result.fileContents).then(() => {
-      // Initialize agent if LLM is configured
-      if (getActiveProviderConfig()) {
-        initializeAgent(projectName);
-      }
-
-      // Auto-start embeddings (now that LadybugDB is ready)
-      startEmbeddings().catch((err) => {
-        if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
-          startEmbeddings('wasm').catch(console.warn);
-        } else {
-          console.warn('Embeddings auto-start failed:', err);
+    // Load graph into LadybugDB (in-browser WASM database) for Nexus AI queries,
+    // then initialize agent once the database is ready
+    loadServerGraph(result.nodes, result.relationships, result.fileContents)
+      .then(() => {
+        if (getActiveProviderConfig()) {
+          initializeAgent(projectName);
         }
+      })
+      .catch((err) => {
+        console.warn('Failed to load graph into LadybugDB:', err);
+        // Agent won't work but graph visualization still does
       });
-    }).catch((err) => {
-      console.warn('Worker hydration failed (non-fatal):', err);
-      // Still initialize agent even if hydration fails
-      if (getActiveProviderConfig()) {
-        initializeAgent(projectName);
+
+    // Auto-start embeddings
+    startEmbeddings().catch((err) => {
+      if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
+        startEmbeddings('wasm').catch(console.warn);
+      } else {
+        console.warn('Embeddings auto-start failed:', err);
       }
     });
-  }, [setViewMode, setGraph, setFileContents, setProjectName, setProgress, initializeAgent, startEmbeddings, hydrateServerGraph, hydrateWorkerFromServer]);
+  }, [setViewMode, setGraph, setFileContents, setProjectName, loadServerGraph, initializeAgent, startEmbeddings]);
 
   // Auto-connect when ?server query param is present (bookmarkable shortcut)
   const autoConnectRan = useRef(false);
@@ -267,7 +255,7 @@ const AppContent = () => {
         onFileSelect={handleFileSelect}
         onGitClone={handleGitClone}
         onServerConnect={async (result, serverUrl) => {
-          await handleServerConnect(result);
+          handleServerConnect(result);
           if (serverUrl) {
             const baseUrl = normalizeServerUrl(serverUrl);
             setServerBaseUrl(baseUrl);
@@ -319,13 +307,6 @@ const AppContent = () => {
         isOpen={isSettingsPanelOpen}
         onClose={() => setSettingsPanelOpen(false)}
         onSettingsSaved={handleSettingsSaved}
-      />
-
-      <HelpPanel
-          isOpen={isHelpDialogBoxOpen}
-          onClose={() => setHelpDialogBoxOpen(false)}
-          nodeCount={graph!.nodes.length}
-          edgeCount={graph!.relationships.length}
       />
 
     </div>

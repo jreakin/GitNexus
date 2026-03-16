@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 import * as Comlink from 'comlink';
-import { KnowledgeGraph, GraphNode, NodeLabel } from '../core/graph/types';
+import { KnowledgeGraph, GraphNode, GraphRelationship, NodeLabel } from '../core/graph/types';
 import { PipelineProgress, PipelineResult, deserializePipelineResult } from '../types/pipeline';
 import { createKnowledgeGraph } from '../core/graph/graph';
 import { DEFAULT_VISIBLE_LABELS } from '../lib/constants';
@@ -123,10 +123,9 @@ interface AppState {
   // Worker API (shared across app)
   runPipeline: (file: File, onProgress: (p: PipelineProgress) => void, clusteringConfig?: ProviderConfig) => Promise<PipelineResult>;
   runPipelineFromFiles: (files: FileEntry[], onProgress: (p: PipelineProgress) => void, clusteringConfig?: ProviderConfig) => Promise<PipelineResult>;
-  hydrateServerGraph: (result: ConnectToServerResult) => Promise<void>;
   runQuery: (cypher: string) => Promise<any[]>;
   isDatabaseReady: () => Promise<boolean>;
-  hydrateWorkerFromServer: (nodes: any[], relationships: any[], fileContents: Record<string, string>) => Promise<void>;
+  loadServerGraph: (nodes: GraphNode[], relationships: GraphRelationship[], fileContents: Record<string, string>) => Promise<void>;
 
   // Embedding state
   embeddingStatus: EmbeddingStatus;
@@ -145,9 +144,7 @@ interface AppState {
   llmSettings: LLMSettings;
   updateLLMSettings: (updates: Partial<LLMSettings>) => void;
   isSettingsPanelOpen: boolean;
-  isHelpDialogBoxOpen: boolean;
   setSettingsPanelOpen: (open: boolean) => void;
-  setHelpDialogBoxOpen: (open: boolean) => void;
   isAgentReady: boolean;
   isAgentInitializing: boolean;
   agentError: string | null;
@@ -294,7 +291,6 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
   // LLM/Agent state
   const [llmSettings, setLLMSettings] = useState<LLMSettings>(loadSettings);
   const [isSettingsPanelOpen, setSettingsPanelOpen] = useState(false);
-  const [isHelpDialogBoxOpen, setHelpDialogBoxOpen] = useState(false);
   const [isAgentReady, setIsAgentReady] = useState(false);
   const [isAgentInitializing, setIsAgentInitializing] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
@@ -471,16 +467,6 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     return deserializePipelineResult(serializedResult, createKnowledgeGraph);
   }, []);
 
-  const hydrateServerGraph = useCallback(async (result: ConnectToServerResult): Promise<void> => {
-    const api = apiRef.current;
-    if (!api) throw new Error('Worker not initialized');
-    await api.hydrateServerGraph({
-      nodes: result.nodes,
-      relationships: result.relationships,
-      fileContents: result.fileContents,
-    });
-  }, []);
-
   const runQuery = useCallback(async (cypher: string): Promise<any[]> => {
     const api = apiRef.current;
     if (!api) throw new Error('Worker not initialized');
@@ -497,14 +483,14 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const hydrateWorkerFromServer = useCallback(async (
-    nodes: any[],
-    relationships: any[],
+  const loadServerGraph = useCallback(async (
+    nodes: GraphNode[],
+    relationships: GraphRelationship[],
     fileContents: Record<string, string>
   ): Promise<void> => {
     const api = apiRef.current;
     if (!api) throw new Error('Worker not initialized');
-    await api.hydrateFromServerData(nodes, relationships, fileContents);
+    await api.loadServerGraph(nodes, relationships, fileContents);
   }, []);
 
   // Embedding methods
@@ -1042,26 +1028,21 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       for (const [p, c] of Object.entries(result.fileContents)) fileMap.set(p, c);
       setFileContents(fileMap);
 
-      await hydrateServerGraph(result);
-
       setViewMode('exploring');
-      setProgress(null);
 
-      // Hydrate the worker-side DB (LadybugDB + BM25) so Query/Processes/embeddings work
-      hydrateWorkerFromServer(result.nodes, result.relationships, result.fileContents).then(() => {
-        if (getActiveProviderConfig()) initializeAgent(pName);
+      // Load graph into LadybugDB for Nexus AI queries, then init agent
+      loadServerGraph(result.nodes, result.relationships, result.fileContents)
+        .then(() => {
+          if (getActiveProviderConfig()) initializeAgent(pName);
+        })
+        .catch((err) => console.warn('Failed to load graph into LadybugDB:', err));
 
-        startEmbeddings().catch((err) => {
-          if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
-            startEmbeddings('wasm').catch(console.warn);
-          } else {
-            console.warn('Embeddings auto-start failed:', err);
-          }
-        });
-      }).catch((err) => {
-        console.warn('Worker hydration failed (non-fatal):', err);
-        // Still initialize agent even if hydration fails
-        if (getActiveProviderConfig()) initializeAgent(pName);
+      startEmbeddings().catch((err) => {
+        if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
+          startEmbeddings('wasm').catch(console.warn);
+        } else {
+          console.warn('Embeddings auto-start failed:', err);
+        }
       });
     } catch (err) {
       console.error('Repo switch failed:', err);
@@ -1072,7 +1053,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       });
       setTimeout(() => { setViewMode('exploring'); setProgress(null); }, 3000);
     }
-  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, initializeAgent, startEmbeddings, hydrateServerGraph, hydrateWorkerFromServer, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
+  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, loadServerGraph, initializeAgent, startEmbeddings, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
 
   const removeCodeReference = useCallback((id: string) => {
     setCodeReferences(prev => {
@@ -1175,10 +1156,9 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     switchRepo,
     runPipeline,
     runPipelineFromFiles,
-    hydrateServerGraph,
     runQuery,
     isDatabaseReady,
-    hydrateWorkerFromServer,
+    loadServerGraph,
     // Embedding state and methods
     embeddingStatus,
     embeddingProgress,
@@ -1193,8 +1173,6 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     updateLLMSettings,
     isSettingsPanelOpen,
     setSettingsPanelOpen,
-    isHelpDialogBoxOpen,
-    setHelpDialogBoxOpen,
     isAgentReady,
     isAgentInitializing,
     agentError,
