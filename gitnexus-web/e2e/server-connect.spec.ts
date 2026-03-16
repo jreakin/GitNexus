@@ -5,7 +5,21 @@ import { test, expect } from '@playwright/test';
  * Requires:
  *   - gitnexus serve running on localhost:4747
  *   - gitnexus-web dev server running on localhost:5173
+ *
+ * Skipped when servers aren't available (CI without services, etc.).
+ * Set E2E=1 to force-run even without the availability check.
  */
+
+// Skip all tests if the gitnexus server isn't reachable
+test.beforeAll(async () => {
+  if (process.env.E2E) return; // force-run
+  try {
+    const res = await fetch('http://localhost:4747/api/repos');
+    if (!res.ok) test.skip(true, 'gitnexus serve not available on :4747');
+  } catch {
+    test.skip(true, 'gitnexus serve not available on :4747');
+  }
+});
 
 /** Shared helper: connect to the local server and wait for the graph to load */
 async function connectAndWaitForGraph(page: import('@playwright/test').Page) {

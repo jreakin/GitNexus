@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * Debug harnesses for investigating specific UI issues.
+ * Excluded from `npm run test:e2e` via testIgnore in playwright.config.ts.
+ * Run directly: DEBUG_E2E=1 npx playwright test e2e/debug-issues.spec.ts
+ */
+const debugTest = process.env.DEBUG_E2E ? test : test.skip;
+
 async function connectToServer(page: import('@playwright/test').Page) {
   page.on('console', msg => {
     if (msg.type() === 'error') console.log(`[error] ${msg.text()}`);
@@ -15,7 +22,7 @@ async function connectToServer(page: import('@playwright/test').Page) {
   await page.waitForTimeout(8_000);
 }
 
-test('debug: process view Reset View button', async ({ page }) => {
+debugTest('debug: process view Reset View button', async ({ page }) => {
   await connectToServer(page);
 
   // Open Processes tab
@@ -78,7 +85,7 @@ test('debug: process view Reset View button', async ({ page }) => {
   expect(transformAfterReset).toBe(transformBefore);
 });
 
-test('debug: lightbulb clears node selection dimming', async ({ page }) => {
+debugTest('debug: lightbulb clears node selection dimming', async ({ page }) => {
   await connectToServer(page);
   await page.waitForTimeout(3_000);
 
