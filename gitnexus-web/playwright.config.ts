@@ -1,5 +1,21 @@
 import { defineConfig } from '@playwright/test';
 
+// Enable insecure browser config (disabled security + CSP bypass) only when explicitly requested.
+// Example: PLAYWRIGHT_INSECURE=1 npx playwright test
+const insecureE2E = process.env.PLAYWRIGHT_INSECURE === '1';
+
+// Base launch args: always enable software WebGL for sigma.js graph rendering in headless mode.
+const launchArgs = [
+  '--use-gl=angle',
+  '--use-angle=swiftshader',
+  '--enable-webgl',
+];
+
+if (insecureE2E) {
+  // Allow cross-origin requests to gitnexus serve on a different port when explicitly enabled.
+  launchArgs.unshift('--disable-web-security', '--disable-site-isolation-trials');
+}
+
 export default defineConfig({
   testDir: './e2e',
   testIgnore: ['**/manual-record.spec.ts', '**/debug-issues.spec.ts'],
@@ -11,19 +27,11 @@ export default defineConfig({
     screenshot: 'on',
     video: 'on',
     launchOptions: {
-      args: [
-        // Cross-origin requests to gitnexus serve on a different port
-        '--disable-web-security',
-        '--disable-site-isolation-trials',
-        // Software WebGL for sigma.js graph rendering in headless mode
-        '--use-gl=angle',
-        '--use-angle=swiftshader',
-        '--enable-webgl',
-      ],
+      args: launchArgs,
     },
-    // Required: Vite dev server sets COEP require-corp for SharedArrayBuffer (LadybugDB WASM).
-    // Playwright must bypass this to allow cross-origin fetches to gitnexus serve.
-    bypassCSP: true,
+    // Vite dev server sets COEP require-corp for SharedArrayBuffer (LadybugDB WASM).
+    // Only bypass CSP when explicitly running in insecure E2E mode.
+    bypassCSP: insecureE2E,
   },
   projects: [
     {
