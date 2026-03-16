@@ -312,6 +312,7 @@ export const GraphCanvas = forwardRef<GraphCanvasHandle>((_, ref) => {
             clearAIToolHighlights();
             clearBlastRadius();
             setSelectedNode(null);
+            setSigmaSelectedNode(null);
             toggleAIHighlights();
           }}
           className={
