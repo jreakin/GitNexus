@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 import * as Comlink from 'comlink';
-import { KnowledgeGraph, GraphNode, NodeLabel } from '../core/graph/types';
+import { KnowledgeGraph, GraphNode, GraphRelationship, NodeLabel } from '../core/graph/types';
 import { PipelineProgress, PipelineResult, deserializePipelineResult } from '../types/pipeline';
 import { createKnowledgeGraph } from '../core/graph/graph';
 import { DEFAULT_VISIBLE_LABELS } from '../lib/constants';
@@ -125,6 +125,7 @@ interface AppState {
   runPipelineFromFiles: (files: FileEntry[], onProgress: (p: PipelineProgress) => void, clusteringConfig?: ProviderConfig) => Promise<PipelineResult>;
   runQuery: (cypher: string) => Promise<any[]>;
   isDatabaseReady: () => Promise<boolean>;
+  loadServerGraph: (nodes: GraphNode[], relationships: GraphRelationship[], fileContents: Record<string, string>) => Promise<void>;
 
   // Embedding state
   embeddingStatus: EmbeddingStatus;
@@ -480,6 +481,16 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     } catch {
       return false;
     }
+  }, []);
+
+  const loadServerGraph = useCallback(async (
+    nodes: GraphNode[],
+    relationships: GraphRelationship[],
+    fileContents: Record<string, string>
+  ): Promise<void> => {
+    const api = apiRef.current;
+    if (!api) throw new Error('Worker not initialized');
+    await api.loadServerGraph(nodes, relationships, fileContents);
   }, []);
 
   // Embedding methods
@@ -1019,7 +1030,12 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
 
       setViewMode('exploring');
 
-      if (getActiveProviderConfig()) initializeAgent(pName);
+      // Load graph into LadybugDB for Nexus AI queries, then init agent
+      loadServerGraph(result.nodes, result.relationships, result.fileContents)
+        .then(() => {
+          if (getActiveProviderConfig()) initializeAgent(pName);
+        })
+        .catch((err) => console.warn('Failed to load graph into LadybugDB:', err));
 
       startEmbeddings().catch((err) => {
         if (err?.name === 'WebGPUNotAvailableError' || err?.message?.includes('WebGPU')) {
@@ -1037,7 +1053,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       });
       setTimeout(() => { setViewMode('exploring'); setProgress(null); }, 3000);
     }
-  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, initializeAgent, startEmbeddings, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
+  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, loadServerGraph, initializeAgent, startEmbeddings, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
 
   const removeCodeReference = useCallback((id: string) => {
     setCodeReferences(prev => {
@@ -1142,6 +1158,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     runPipelineFromFiles,
     runQuery,
     isDatabaseReady,
+    loadServerGraph,
     // Embedding state and methods
     embeddingStatus,
     embeddingProgress,

@@ -12,6 +12,8 @@ import { isEmbedderReady, disposeEmbedder } from '../core/embeddings/embedder';
 import type { EmbeddingProgress, SemanticSearchResult } from '../core/embeddings/types';
 import type { ProviderConfig, AgentStreamChunk } from '../core/llm/types';
 import { createGraphRAGAgent, streamAgentResponse, type AgentMessage, createChatModel } from '../core/llm/agent';
+import { createKnowledgeGraph } from '../core/graph/graph';
+import type { GraphNode, GraphRelationship } from '../core/graph/types';
 import { SystemMessage } from '@langchain/core/messages';
 import { enrichClustersBatch, ClusterMemberInfo, ClusterEnrichment } from '../core/ingestion/cluster-enricher';
 import { CommunityNode } from '../core/ingestion/community-processor';
@@ -205,6 +207,38 @@ const workerApi = {
 
     // Convert to serializable format for transfer back to main thread
     return serializePipelineResult(result);
+  },
+
+  /**
+   * Load a pre-built graph from the server into LadybugDB.
+   * Called when connecting via server (bypasses the WASM ingestion pipeline).
+   */
+  async loadServerGraph(
+    nodes: GraphNode[],
+    relationships: GraphRelationship[],
+    fileContents: Record<string, string>
+  ): Promise<void> {
+    const graph = createKnowledgeGraph();
+    for (const node of nodes) graph.addNode(node);
+    for (const rel of relationships) graph.addRelationship(rel);
+
+    const fileMap = new Map<string, string>();
+    for (const [path, content] of Object.entries(fileContents)) {
+      fileMap.set(path, content);
+      storedFileContents.set(path, content);
+    }
+
+    const lbug = await getLbugAdapter();
+    await lbug.loadGraphToLbug(graph, fileMap);
+
+    // Build BM25 index for text search
+    buildBM25Index(graph);
+
+    if (import.meta.env.DEV) {
+      const stats = await lbug.getLbugStats();
+      console.log('LadybugDB loaded from server:', stats);
+      console.log('📁 Stored', storedFileContents.size, 'files for grep/read tools');
+    }
   },
 
   /**

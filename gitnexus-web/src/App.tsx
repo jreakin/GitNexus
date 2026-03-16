@@ -40,6 +40,7 @@ const AppContent = () => {
     availableRepos,
     setAvailableRepos,
     switchRepo,
+    loadServerGraph,
   } = useAppState();
 
   const graphCanvasRef = useRef<GraphCanvasHandle>(null);
@@ -132,13 +133,13 @@ const AppContent = () => {
     }
   }, [setViewMode, setGraph, setFileContents, setProgress, setProjectName, runPipelineFromFiles, startEmbeddings, initializeAgent]);
 
-  const handleServerConnect = useCallback((result: ConnectToServerResult) => {
+  const handleServerConnect = useCallback(async (result: ConnectToServerResult) => {
     // Extract project name from repoPath
     const repoPath = result.repoInfo.repoPath;
     const projectName = repoPath.split('/').pop() || 'server-project';
     setProjectName(projectName);
 
-    // Build KnowledgeGraph from server data (bypasses WASM pipeline entirely)
+    // Build KnowledgeGraph from server data for visualization
     const graph = createKnowledgeGraph();
     for (const node of result.nodes) {
       graph.addNode(node);
@@ -158,10 +159,18 @@ const AppContent = () => {
     // Transition directly to exploring view
     setViewMode('exploring');
 
-    // Initialize agent if LLM is configured
-    if (getActiveProviderConfig()) {
-      initializeAgent(projectName);
-    }
+    // Load graph into LadybugDB (in-browser WASM database) for Nexus AI queries,
+    // then initialize agent once the database is ready
+    loadServerGraph(result.nodes, result.relationships, result.fileContents)
+      .then(() => {
+        if (getActiveProviderConfig()) {
+          initializeAgent(projectName);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load graph into LadybugDB:', err);
+        // Agent won't work but graph visualization still does
+      });
 
     // Auto-start embeddings
     startEmbeddings().catch((err) => {
@@ -171,7 +180,7 @@ const AppContent = () => {
         console.warn('Embeddings auto-start failed:', err);
       }
     });
-  }, [setViewMode, setGraph, setFileContents, setProjectName, initializeAgent, startEmbeddings]);
+  }, [setViewMode, setGraph, setFileContents, setProjectName, loadServerGraph, initializeAgent, startEmbeddings]);
 
   // Auto-connect when ?server query param is present (bookmarkable shortcut)
   const autoConnectRan = useRef(false);
@@ -203,7 +212,7 @@ const AppContent = () => {
         setProgress({ phase: 'extracting', percent: 97, message: 'Processing...', detail: 'Extracting file contents' });
       }
     }).then(async (result) => {
-      handleServerConnect(result);
+      await handleServerConnect(result);
 
       // Store server URL and fetch available repos for the repo switcher
       setServerBaseUrl(baseUrl);
