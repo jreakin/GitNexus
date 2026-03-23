@@ -32,7 +32,6 @@ export default defineConfig({
         branches: 23,
         functions: 28,
         lines: 27,
-        autoUpdate: true,
       },
     },
 

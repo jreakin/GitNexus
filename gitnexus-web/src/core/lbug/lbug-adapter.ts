@@ -79,6 +79,13 @@ export const loadGraphToLbug = async (
   const { conn, lbug } = await initLbug();
 
   try {
+    // Truncate all existing data to prevent accumulation across repo switches
+    for (const tableName of NODE_TABLES) {
+      try { await conn.query(`DELETE FROM ${tableName}`); } catch {}
+    }
+    try { await conn.query(`DELETE FROM ${REL_TABLE_NAME}`); } catch {}
+    try { await conn.query(`DELETE FROM ${EMBEDDING_TABLE_NAME}`); } catch {}
+
     if (import.meta.env.DEV) console.log(`LadybugDB: Generating CSVs for ${graph.nodeCount} nodes...`);
 
     // 1. Generate all CSVs (per-table)

@@ -95,6 +95,7 @@ interface AppState {
   isAIHighlightsEnabled: boolean;
   toggleAIHighlights: () => void;
   clearAIToolHighlights: () => void;
+  clearAICitationHighlights: () => void;
   clearBlastRadius: () => void;
   queryResult: QueryResult | null;
   setQueryResult: (result: QueryResult | null) => void;
@@ -225,6 +226,10 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAIToolHighlights = useCallback(() => {
     setAIToolHighlightedNodeIds(new Set());
+  }, []);
+
+  const clearAICitationHighlights = useCallback(() => {
+    setAICitationHighlightedNodeIds(new Set());
   }, []);
 
   const clearBlastRadius = useCallback(() => {
@@ -1005,6 +1010,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     // Without this, sigma reducers dim ALL nodes/edges because old node IDs don't match
     setHighlightedNodeIds(new Set());
     clearAIToolHighlights();
+    clearAICitationHighlights();
     clearBlastRadius();
     setSelectedNode(null);
     setQueryResult(null);
@@ -1061,7 +1067,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
       });
       setTimeout(() => { setViewMode('exploring'); setProgress(null); }, 3000);
     }
-  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, loadServerGraph, initializeAgent, startEmbeddingsWithFallback, setHighlightedNodeIds, clearAIToolHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
+  }, [serverBaseUrl, setProgress, setViewMode, setProjectName, setGraph, setFileContents, loadServerGraph, initializeAgent, startEmbeddingsWithFallback, setHighlightedNodeIds, clearAIToolHighlights, clearAICitationHighlights, clearBlastRadius, setSelectedNode, setQueryResult, setCodeReferences, setCodePanelOpen, setCodeReferenceFocus]);
 
   const removeCodeReference = useCallback((id: string) => {
     setCodeReferences(prev => {
@@ -1144,6 +1150,7 @@ export const AppStateProvider = ({ children }: { children: ReactNode }) => {
     isAIHighlightsEnabled,
     toggleAIHighlights,
     clearAIToolHighlights,
+    clearAICitationHighlights,
     clearBlastRadius,
     queryResult,
     setQueryResult,
