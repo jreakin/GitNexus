@@ -97,14 +97,10 @@ test.describe('Processes Panel', () => {
 
     const viewBtn = processRow.getByRole('button', { name: /View/ });
     await expect(viewBtn).toBeVisible({ timeout: 5_000 });
-    if (await viewBtn.isVisible()) {
-      await viewBtn.click();
-      // Wait for modal to appear
-      await expect(page.locator('.fixed.inset-0.z-50')).toBeVisible({ timeout: 5_000 });
-      await page.screenshot({ path: testInfo.outputPath('process-view-clicked.png'), fullPage: true });
-    } else {
-      await page.screenshot({ path: testInfo.outputPath('process-view-button-not-found.png'), fullPage: true });
-    }
+    await viewBtn.click();
+    // Wait for modal to appear
+    await expect(page.locator('.fixed.inset-0.z-50')).toBeVisible({ timeout: 5_000 });
+    await page.screenshot({ path: testInfo.outputPath('process-view-clicked.png'), fullPage: true });
   });
 
   test('lightbulb highlights nodes in graph', async ({ page }, testInfo) => {
@@ -121,14 +117,11 @@ test.describe('Processes Panel', () => {
     await processRow.hover();
 
     const lightbulb = processRow.locator('button[title*="highlight"]');
-    if (await lightbulb.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await lightbulb.click();
-      // Wait for highlight to apply (graph re-render)
-      await page.waitForLoadState('networkidle');
-      await page.screenshot({ path: testInfo.outputPath('after-highlight.png'), fullPage: true });
-    } else {
-      await page.screenshot({ path: testInfo.outputPath('lightbulb-not-found.png'), fullPage: true });
-    }
+    await expect(lightbulb).toBeVisible({ timeout: 5_000 });
+    await lightbulb.click();
+    // Wait for highlight to apply (graph re-render)
+    await page.waitForLoadState('networkidle');
+    await page.screenshot({ path: testInfo.outputPath('after-highlight.png'), fullPage: true });
   });
 });
 
@@ -150,13 +143,10 @@ test.describe('Turn Off All Highlights', () => {
 
       // Click "Turn off all highlights" button (top-right lightbulb)
       const highlightBtn = page.locator('button[title*="Turn off"]');
-      if (await highlightBtn.isVisible()) {
-        await highlightBtn.click();
-        await page.waitForLoadState('networkidle');
-        await page.screenshot({ path: testInfo.outputPath('highlights-cleared.png'), fullPage: true });
-      } else {
-        await page.screenshot({ path: testInfo.outputPath('turn-off-button-not-found.png'), fullPage: true });
-      }
+      await expect(highlightBtn).toBeVisible({ timeout: 5_000 });
+      await highlightBtn.click();
+      await page.waitForLoadState('networkidle');
+      await page.screenshot({ path: testInfo.outputPath('highlights-cleared.png'), fullPage: true });
     } else {
       await page.screenshot({ path: testInfo.outputPath('start-sh-not-found.png'), fullPage: true });
     }

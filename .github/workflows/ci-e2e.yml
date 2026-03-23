@@ -50,6 +50,18 @@ jobs:
         run: npm run build
         working-directory: gitnexus
 
+      - name: Analyze repository (index for backend)
+        run: node dist/cli/index.js analyze
+        working-directory: gitnexus
+
+      - name: Start backend server
+        run: node dist/cli/index.js serve &
+        working-directory: gitnexus
+
+      - name: Wait for backend readiness
+        run: npx wait-on http://localhost:4747/api/repos --timeout 30000
+        working-directory: gitnexus-web
+
       - name: Start Vite dev server
         run: npm run dev &
         working-directory: gitnexus-web
@@ -63,9 +75,6 @@ jobs:
         working-directory: gitnexus-web
         env:
           E2E: '1'
-        # E2E tests may fail without a running gitnexus serve backend;
-        # non-blocking until we add backend service to CI
-        continue-on-error: true
 
       - name: Upload test results
         if: always()

@@ -81,10 +81,25 @@ export const loadGraphToLbug = async (
   try {
     // Truncate all existing data to prevent accumulation across repo switches
     for (const tableName of NODE_TABLES) {
-      try { await conn.query(`DELETE FROM ${tableName}`); } catch {}
+      try {
+        await conn.query(`DELETE FROM ${tableName}`);
+      } catch (err) {
+        console.warn(`LadybugDB cleanup failed for ${tableName}:`, err);
+        if (import.meta.env.DEV) throw err;
+      }
     }
-    try { await conn.query(`DELETE FROM ${REL_TABLE_NAME}`); } catch {}
-    try { await conn.query(`DELETE FROM ${EMBEDDING_TABLE_NAME}`); } catch {}
+    try {
+      await conn.query(`DELETE FROM ${REL_TABLE_NAME}`);
+    } catch (err) {
+      console.warn(`LadybugDB cleanup failed for ${REL_TABLE_NAME}:`, err);
+      if (import.meta.env.DEV) throw err;
+    }
+    try {
+      await conn.query(`DELETE FROM ${EMBEDDING_TABLE_NAME}`);
+    } catch (err) {
+      console.warn(`LadybugDB cleanup failed for ${EMBEDDING_TABLE_NAME}:`, err);
+      if (import.meta.env.DEV) throw err;
+    }
 
     if (import.meta.env.DEV) console.log(`LadybugDB: Generating CSVs for ${graph.nodeCount} nodes...`);
 
