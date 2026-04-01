@@ -268,12 +268,16 @@ export async function runFullAnalysis(
 
       // Release ONNX Runtime session to prevent its C++ atexit handlers from
       // racing with LadybugDB cleanup during process.exit() (#38, #40).
-      try {
-        const { disposeEmbedder } = await import('./embeddings/embedder.js');
-        await disposeEmbedder();
-      } catch {
-        /* best-effort */
-      }
+      const disposeEmbedderBestEffort = async (): Promise<void> => {
+        try {
+          const { disposeEmbedder } = await import('./embeddings/embedder.js');
+          await disposeEmbedder();
+        } catch {
+          /* best-effort */
+        }
+      };
+
+      await disposeEmbedderBestEffort();
     }
 
     // ── Phase 5: Finalize (98–100%) ───────────────────────────────────
