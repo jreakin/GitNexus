@@ -356,11 +356,13 @@ export async function runFullAnalysis(
   } catch (err) {
     // Ensure native resources are closed even on error to prevent
     // C++ atexit destructor races during process.exit() (#38, #40).
-    try {
-      const { disposeEmbedder } = await import('./embeddings/embedder.js');
-      await disposeEmbedder();
-    } catch {
-      /* swallow */
+    if (options.embeddings) {
+      try {
+        const { disposeEmbedder } = await import('./embeddings/embedder.js');
+        await disposeEmbedder();
+      } catch {
+        /* swallow */
+      }
     }
     try {
       await closeLbug();
