@@ -265,6 +265,15 @@ export async function runFullAnalysis(
         {},
         cachedEmbeddingNodeIds.size > 0 ? cachedEmbeddingNodeIds : undefined,
       );
+
+      // Release ONNX Runtime session to prevent its C++ atexit handlers from
+      // racing with LadybugDB cleanup during process.exit() (#38, #40).
+      try {
+        const { disposeEmbedder } = await import('./embeddings/embedder.js');
+        await disposeEmbedder();
+      } catch {
+        /* best-effort */
+      }
     }
 
     // ── Phase 5: Finalize (98–100%) ───────────────────────────────────
